@@ -1,153 +1,260 @@
+# PATH : C:\Users\minhc\anaconda3\envs\ROBOCON-ball-detection
+
+import os
+import argparse
+import cv2
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider, Button
 import math
+import matplotlib.pyplot as plt
+from collections import defaultdict
+from scipy import signal
 
 
-# Define parameters
-L1 = 22  # Length of first segment
-L2 = 22  # Length of second segment
-L3 = 21  # Length of third segment
-x0, y0 = 0, 21  # Base position
-theta1 = np.pi / 4  # Theta1 angle
-theta2 = np.pi / 4  # Theta2 angle
-theta3 = np.pi * 3 / 2  # Fixed angle for third joint
 
-# Constants for gravity
-g = 9.81  # Gravity constant (m/s^2)
-dt = 0.1  # Time step (s)
+# --------------------------------------------------- CODE THUẬT TOÁN CHT -----------------------------------------------------------------
 
-# Function to calculate forward kinematics
-def forward_kinematics(theta1, theta2, theta3):
-    x1 = L1 * np.cos(theta1) + x0
-    y1 = L1 * np.sin(theta1) + y0
-    x2 = x1 + L2 * np.cos(theta1 + theta2)
-    y2 = y1 + L2 * np.sin(theta1 + theta2)
-    x3 = x2 + L3 * np.cos( theta1 + theta2 + theta3)
-    y3 = y2 + L3 * np.sin( theta1 + theta2 + theta3)
-    return x1, y1, x2, y2, x3, y3
+# def find_hough_circles(image, edge_image, r_min, r_max, delta_r, num_thetas, bin_threshold, post_process = True):
+#   #image size
+#   img_height, img_width = edge_image.shape[:2]
+  
+#   # R and Theta ranges
+#   dtheta = int(360 / num_thetas)
+  
+#   ## Thetas is bins created from 0 to 360 degree with increment of the dtheta
+#   thetas = np.arange(0, 360, step=dtheta)
+  
+#   ## Radius ranges from r_min to r_max 
+#   rs = np.arange(r_min, r_max, step=delta_r)
+  
+#   # Calculate Cos(theta) and Sin(theta) it will be required later
+#   cos_thetas = np.cos(np.deg2rad(thetas))
+#   sin_thetas = np.sin(np.deg2rad(thetas))
+  
+#   # Evaluate and keep ready the candidate circles dx and dy for different delta radius
+#   # based on the the parametric equation of circle.
+#   # x = x_center + r * cos(t) and y = y_center + r * sin(t),  
+#   # where (x_center,y_center) is Center of candidate circle with radius r. t in range of [0,2PI)
+#   circle_candidates = []
+#   for r in rs:
+#     for t in range(num_thetas):
+#       #instead of using pre-calculated cos and sin theta values you can calculate here itself by following
+#       #circle_candidates.append((r, int(r*cos(2*pi*t/num_thetas)), int(r*sin(2*pi*t/num_thetas))))
+#       #but its better to pre-calculate and use it here.
+#       circle_candidates.append((r, int(r * cos_thetas[t]), int(r * sin_thetas[t])))
+  
+#   # Hough Accumulator, we are using defaultdic instead of standard dict as this will initialize for key which is not 
+#   # aready present in the dictionary instead of throwing exception.
+#   accumulator = defaultdict(int)
+  
+#   for y in range(img_height):
+#     for x in range(img_width):
+#       if edge_image[y][x] != 0: #white pixel
+#         # Found an edge pixel so now find and vote for circle from the candidate circles passing through this pixel.
+#         for r, rcos_t, rsin_t in circle_candidates:
+#           x_center = x - rcos_t
+#           y_center = y - rsin_t
+#           accumulator[(x_center, y_center, r)] += 1 #vote for current candidate
+  
+#   # Output image with detected lines drawn
+#   output_img = image.copy()
+#   # Output list of detected circles. A single circle would be a tuple of (x,y,r,threshold) 
+#   out_circles = []
+  
+#   # Sort the accumulator based on the votes for the candidate circles 
+#   for candidate_circle, votes in sorted(accumulator.items(), key=lambda i: -i[1]):
+#     x, y, r = candidate_circle
+#     current_vote_percentage = votes / num_thetas
+#     if current_vote_percentage >= bin_threshold: 
+#       # Shortlist the circle for final result
+#       out_circles.append((x, y, r, current_vote_percentage))
+#       print(x, y, r, current_vote_percentage)
+      
+  
+#   # Post process the results, can add more post processing later.
+#   if post_process :
+#     pixel_threshold = 10
+#     postprocess_circles = []
+#     for x, y, r, v in out_circles:
+#       # Exclude circles that are too close of each other
+#       # all((x - xc) ** 2 + (y - yc) ** 2 > rc ** 2 for xc, yc, rc, v in postprocess_circles)
+#       # Remove nearby duplicate circles based on pixel_threshold
+#       if all(abs(x - xc) > pixel_threshold or abs(y - yc) > pixel_threshold or abs(r - rc) > pixel_threshold for xc, yc, rc, v in postprocess_circles):
+#         postprocess_circles.append((x, y, r, v))
+#     out_circles = postprocess_circles
+  
+    
+#   # Draw shortlisted circles on the output image
+#   for x, y, r, v in out_circles:
+#     output_img = cv2.circle(output_img, (x,y), r, (0,255,0), 2)
+  
+#   return output_img, out_circles
 
-def inverse_kinematics(x3, y3, L1, L2, L3):
-    theta1 = 0  # Fixed angle for third joint
-    theta2 = 0  # Fixed angle for third joint
-    theta3 = np.pi * 3 / 2  # Fixed angle for third joint
-    isGetTheta = False
-    for i in range(0,180):
-        for j in range(0,360):
-            theta1 = math.radians(i)
-            theta2 = math.radians(j)
-            x1, y1, x2, y2, x3, y3 = forward_kinematics(theta1,theta2,theta3)
-            distance_to_ball = np.sqrt((x3 - ball_x )**2 + (y3 - ball_y )**2)
-            if distance_to_ball< 2:
-                print("1")
-                isGetTheta = True
-                break
-        if isGetTheta:
-            print("matched")
-            break
-    isGetTheta = False    
+#------------------------------------------------------------------------------------------------------------------------------------------------
 
-    return theta1, theta2, theta3
+# HÀM TĂNG ĐỘ SÁNG CỦA ẢNH
+def increase_brightness(image, alpha):
+    # Convert the image to float32 for calculations
+    image = image.astype(np.float32)
 
-# Initialize plot
-fig, ax = plt.subplots()
-plt.subplots_adjust(left=0.25, bottom=0.25)
+    # Increase brightness using multiplication with alpha
+    brightened_image = image * alpha
 
-plt.title('Three-Link Planar Robotic Arm Simulation | BK Galaxy')
-plt.xlabel('X')
-plt.ylabel('Y')
-line, = ax.plot([], [], 'o-', lw=2)
+    # Clip pixel values to the valid range (0-255)
+    brightened_image = np.clip(brightened_image, 0, 255)
 
-# Calculate distance to the ball
-ball_radius = 19 / 2
-# Set the position of the ball
-ball_x = 50
-ball_y = ball_radius
+    # Convert back to uint8 for further processing
+    return brightened_image.astype(np.uint8)
+
+
+
+
+def main():
+    
+    parser = argparse.ArgumentParser(description='Find Hough circles from the image.')
+    parser.add_argument('image_path', type=str, help='Full path of the input image.')
+    parser.add_argument('--r_min', type=float, help='Min radius circle to detect. Default is 5.')
+    parser.add_argument('--r_max', type=float, help='Max radius circle to detect.')
+    parser.add_argument('--delta_r', type=float, help='Delta change in radius from r_min to r_max. Default is 1.')
+    parser.add_argument('--num_thetas', type=float, help='Number of steps for theta from 0 to 2PI. Default is 100.')
+    parser.add_argument('--bin_threshold', type=int, help='Thresholding value to shortlist candidate for circle. Default is 0.4 i.e. 40%.')
+    parser.add_argument('--min_edge_threshold', type=int, help='Minimum threshold value for edge detection. Default 100.')
+    parser.add_argument('--max_edge_threshold', type=int, help='Maximum threshold value for edge detection. Default 200.')
+    
+    args = parser.parse_args()
+    
+    img_path = args.image_path
+    r_min = 10
+    r_max = 200
+    delta_r = 1
+    num_thetas = 100
+    bin_threshold = 0.4
+    min_edge_threshold = 100
+    max_edge_threshold = 200
+    
+    if args.r_min:
+        r_min = args.r_min
+    
+    if args.r_max:
+        r_max = args.r_max
         
-# Plot the ball
-circle = plt.Circle((ball_x, ball_y), ball_radius, color='red')
-
-# Initial values for theta1 and theta2
-theta1_init = np.pi / 2
-theta2_init = 0
-
-# Create sliders
-axcolor = 'lightgoldenrodyellow'
-ax_theta1 = plt.axes([0.25, 0.1, 0.65, 0.03], facecolor=axcolor)
-ax_theta2 = plt.axes([0.25, 0.15, 0.65, 0.03], facecolor=axcolor)
-
-s_theta1 = Slider(ax_theta1, 'Theta1', 0, 2*np.pi, valinit=theta1_init)
-s_theta2 = Slider(ax_theta2, 'Theta2', 0, 2*np.pi, valinit=theta2_init)
-
-# Create a button to drop the ball
-ax_drop_button = plt.axes([0.81, 0.025, 0.1, 0.04], facecolor=axcolor)
-button_drop = Button(ax_drop_button, 'Drop')# Create a button to drop the ball
-ax_pick_button = plt.axes([0.25, 0.025, 0.1, 0.04], facecolor=axcolor)
-button_pick = Button(ax_pick_button, 'Pick')
-
-
-# Function to update plot
-def update(val):
-    global ball_x, ball_y, circle
-    theta1_val = s_theta1.val
-    theta2_val = s_theta2.val
-    x1, y1, x2, y2, x3, y3 = forward_kinematics(theta1_val, theta2_val, theta3)
-    line.set_data([x0, x1, x2, x3], [y0, y1, y2, y3])
+    if args.delta_r:
+        delta_r = args.delta_r
     
-    # Check if the end-effector (x3, y3) touches the ball
-    distance_to_ball = np.sqrt((x3 - ball_x )**2 + (y3 - ball_y )**2)
+    if args.num_thetas:
+        num_thetas = args.num_thetas
     
-    # Print distance to the ball
-##    print("Distance to ball:", distance_to_ball)
-    
-    # If the end-effector is at the center of the ball, move the ball along with it
-    if distance_to_ball <= ball_radius:
-        ball_x = x3
-        ball_y = y3 
-        circle.center  = (ball_x, ball_y)
-
-    # Plot the ball
-    ax.add_artist(circle)
-    
-    return line, circle
-
-
-# Function to handle dropping the ball
-def drop_ball(event):
-    global ball_x, ball_y
-    ball_y = ball_radius
-    circle.center  = (ball_x, ball_radius)
-    # Plot the ball
-    ax.add_artist(circle)
-    update(None)
-
-def pick_ball(event):
-    global ball_x, ball_y
-    theta1, theta2, theta3 = inverse_kinematics(ball_x, ball_y, L1, L2, L3)
-
-    theta1_val = theta1
-    theta2_val = theta2
-    print(math.degrees(theta1), math.degrees(theta2))
-    s_theta1.val = theta1
-    s_theta2.val = theta2
-    x1, y1, x2, y2, x3, y3 = forward_kinematics(theta1_val, theta2_val, theta3)
-    line.set_data([x0, x1, x2, x3], [y0, y1, y2, y3])
-    return line
+    if args.bin_threshold:
+        bin_threshold = args.bin_threshold
         
-# Set plot limits
-ax.set_xlim(-80, 80)
-ax.set_ylim(-10, 80)
-ax.set_aspect('equal')
-ax.grid(True)
+    if args.min_edge_threshold:
+        min_edge_threshold = args.min_edge_threshold
+        
+    if args.max_edge_threshold:
+        max_edge_threshold = args.max_edge_threshold
+    
+    image = cv2.imread(img_path)
 
-update(None)
-s_theta1.on_changed(update)
-s_theta2.on_changed(update)
 
-# Register the button's callback function
-button_drop.on_clicked(drop_ball)
-# Register the button's callback function
-button_pick.on_clicked(pick_ball)
+    # ------------------------------------------------------------- TIỀN XỬ LÝ --------------------------------------------------------------------
+    # Resize img 
+    new_width = 600
+    new_height = int(image.shape[0] * (new_width / image.shape[1]))
+    input_img = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
+    
+    # Apply Gaussian blur
+    blurred_image = cv2.GaussianBlur(input_img, (7,7),0)
+    cv2.imshow("Blurred Image", blurred_image)
+    cv2.waitKey(0)
 
-# Show plot
-plt.show()
+    # Increase brightness by a factor of 2.6 adjust as needed) 
+    brightened_image = increase_brightness(blurred_image, 2.6)
+
+    # Display the original and brightened images
+    cv2.imshow("Brightened Image", brightened_image)
+    cv2.waitKey(0)
+
+    # Convert the image to HSL color space
+    hsv_image = cv2.cvtColor(brightened_image, cv2.COLOR_BGR2HLS)  
+    cv2.imshow("HSV_img", hsv_image)
+    cv2.waitKey(0)
+
+    # Define the lower and upper threshold bounds for HSV channels
+
+    # Adjust these values based on the desired color range you want to extract
+    # hue: màu 0-360     saturation: độ tinh khiết (0-đục, 255- đầy đủ)    lightness: độ sáng tổi (0-đen, 255-trắng)
+    # '''Hue (°)   | Color
+    # --------------------
+    # 0-30      | Red
+    # 30-90     | Yellow
+    # 90-150    | Green
+    # 150-210   | Cyan
+    # 210-270   | Blue
+    # 270-330   | Magenta
+    # 330-360   | Red (again) '''
+    # Define the lower and upper threshold bounds for HSV channels
+    # Saturation also represents the color purity, but in HSL, a 50% saturation value corresponds to a medium grey, 
+    # while 0% is achromatic (black or white) and 100% is the purest color.
+
+    lower_bounds = np.array([80, 0, 0])  # Hue, Saturation, Lightness (adjust as needed)
+    upper_bounds = np.array([180, 255, 255])  # Hue, Saturation, Lightness (adjust as needed)
+    
+    # Apply thresholding using inRange faunction
+    mask = cv2.inRange(hsv_image, lower_bounds, upper_bounds)
+
+    # Combine mask + original image => extract the desired color
+    result = cv2.bitwise_and(brightened_image,brightened_image, mask=mask)
+
+    # Show the original image, mask, and thresholded image
+    cv2.imshow("Mask", mask)
+    cv2.imshow("HSV Thresholded Image",result)
+    cv2.waitKey(0)
+
+    # Convert to gray image
+    gray = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
+    cv2.imshow('Grayscale Image', gray)
+    cv2.waitKey(0)
+
+    # Apply Gaussian Blur => blur image => reduce noise for next edge detection step
+    blur = cv2.GaussianBlur(gray, (9, 9),0)
+    cv2.imshow('Blurred Image', blur)
+    cv2.waitKey(0)
+
+    # Edge detection by Canny
+    edges = cv2.Canny(blur, 10, 150)
+    cv2.imshow('Edge Image', edges)
+    cv2.waitKey(0)
+
+    # Apply Hough Circle Transform
+    circles = cv2.HoughCircles(edges, cv2.HOUGH_GRADIENT, dp=1, minDist=150, param1=40, param2=30, minRadius=0, maxRadius=0)
+    # ổn 3: 40 30
+
+
+    # Draw detected circles on original image
+    if circles is not None:
+        circles = np.uint16(np.around(circles))
+        for i in circles[0, :]:
+            center = (i[0], i[1])
+            radius = i[2]
+            # Vẽ hình tròn và tâm
+            cv2.circle(input_img, center, radius, (0, 255, 0), 2)
+            cv2.circle(input_img, center, 2, (0, 0, 255), 3)
+
+            x, y, radius = i[0], i[1], i[2]
+            perimeter = math.pi * 2 * radius
+            print(f"Center: ({x}, {y}), Radius: {radius}, Perimeter: {perimeter}")
+
+            # in tọa độ center và bán kính vào file toa_do_duong_tron.txt
+            circle_file = open('toa_do_duong_tron.txt', 'a')
+            for i in range(len(circles)):
+                circle_file.write('Center: (' + str(x) + ', ' + str(y) +  '), Radius: ' + str(radius) + ', Radius: ' + str(perimeter) + '\n')
+            circle_file.close()
+
+    print ("Done detecting circles!")
+
+# Hiển thị ảnh với các hình tròn đã phát hiện
+    cv2.imshow('KET QUA',input_img)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    main()
